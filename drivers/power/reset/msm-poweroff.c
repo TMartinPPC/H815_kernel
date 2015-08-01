@@ -306,6 +306,8 @@ static void msm_restart_prepare(const char *cmd)
 		} else if (!strncmp(cmd, "edl", 3)) {
 			enable_emergency_dload_mode();
 #endif
+		} else if (!strncmp(cmd, "laf", 3)) {
+			__raw_writel(0x6c616664, restart_reason);
 		} else {
 			__raw_writel(0x77665501, restart_reason);
 		}

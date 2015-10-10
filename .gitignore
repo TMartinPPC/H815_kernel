@@ -63,6 +63,10 @@ include/config
 include/linux/version.h
 include/generated
 arch/*/include/generated
+patches
+h815
+ramdisks
+utilities
 
 # stgit generated dirs
 patches-*
@@ -91,5 +95,6 @@ GTAGS
 *.list
 modules
 stock
+out
 dt.img
 \#*#

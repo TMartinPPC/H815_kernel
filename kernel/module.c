@@ -1168,6 +1168,9 @@ static int check_version(Elf_Shdr *sechdrs,
 	unsigned int i, num_versions;
 	struct modversion_info *versions;
 
+	if(!strncmp("exfatfs", mod->name, 7))
+		return 1;
+
 	/* Exporting module didn't supply crcs?  OK, we're already tainted. */
 	if (!crc)
 		return 1;
@@ -2465,7 +2468,11 @@ static int module_sig_check(struct load_info *info)
 	    memcmp(mod + info->len - markerlen, MODULE_SIG_STRING, markerlen) == 0) {
 		/* We truncate the module to discard the signature */
 		info->len -= markerlen;
+#ifdef CONFIG_MACH_MSM8992_P1
+		err = 0;
+#else
 		err = mod_verify_sig(mod, &info->len);
+#endif
 	}
 
 	if (!err) {

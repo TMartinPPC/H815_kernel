@@ -79,3 +79,4 @@ obj-$(CONFIG_POWER_RESET)	+= reset/
 obj-$(CONFIG_LGE_PM_CHARGER_CONTROLLER) += charger-controller.o
 obj-$(CONFIG_LGE_PM_SMPL_COUNTER) += lge_smpl_count.o
 obj-y				+= qcom/
+obj-$(CONFIG_FORCE_FAST_CHARGE) += fastcharge.o

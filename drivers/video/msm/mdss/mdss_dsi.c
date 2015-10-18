@@ -31,6 +31,10 @@
 
 #define XO_CLK_RATE	19200000
 
+#ifdef CONFIG_STATE_NOTIFIER
+#include <linux/state_notifier.h>
+#endif
+
 #if defined(CONFIG_LGE_MIPI_P1_INCELL_QHD_CMD_PANEL)
 #include <linux/input/lge_touch_notify.h>
 #include <soc/qcom/lge/board_lge.h>
@@ -1571,6 +1575,10 @@ static int mdss_dsi_event_handler(struct mdss_panel_data *pdata,
 		if (ctrl_pdata->on_cmds.link_state == DSI_HS_MODE)
 			rc = mdss_dsi_unblank(pdata);
 		pdata->panel_info.esd_rdy = true;
+#ifdef CONFIG_STATE_NOTIFIER
+		if (!use_fb_notifier)
+			state_resume();
+#endif
 		break;
 	case MDSS_EVENT_BLANK:
 #if defined(CONFIG_LGE_MIPI_P1_INCELL_QHD_CMD_PANEL)
@@ -1596,6 +1604,10 @@ static int mdss_dsi_event_handler(struct mdss_panel_data *pdata,
 		if (ctrl_pdata->off_cmds.link_state == DSI_LP_MODE)
 			rc = mdss_dsi_blank(pdata, power_state);
 		rc = mdss_dsi_off(pdata, power_state);
+#ifdef CONFIG_STATE_NOTIFIER
+		if (!use_fb_notifier)
+			state_suspend();
+#endif
 #if defined(CONFIG_LGE_MIPI_P1_INCELL_QHD_CMD_PANEL)
 		if (ctrl_pdata->ndx) {
 			if (ctrl_pdata->panel_data.panel_info.panel_type

@@ -32,9 +32,27 @@
 #include <soc/qcom/lge/board_lge.h>
 #define XO_CLK_RATE	19200000
 
+<<<<<<< HEAD
 #if IS_ENABLED(CONFIG_LGE_DISPLAY_POWER_SEQUENCE)
 #include "lge/panel/oem_mdss_dsi_common.h"
 struct lge_mdss_dsi_interface lge_mdss_dsi;
+=======
+#ifdef CONFIG_STATE_NOTIFIER
+#include <linux/state_notifier.h>
+#endif
+
+#if defined(CONFIG_LGE_MIPI_P1_INCELL_QHD_CMD_PANEL)
+#include <linux/input/lge_touch_notify.h>
+#include <soc/qcom/lge/board_lge.h>
+int swipe_status;
+int lgd_control_deep_sleep;
+int lgd_rsp_lcd_on_off = 1;
+int proxy_sensor_status;
+int panel_not_connected;
+bool first_touch_power_on = false;
+int SIC_is_doze = 1;
+int jdi_deep_sleep = 0;
+>>>>>>> 0ed388d... state_notifier: added new driver for on/off operations @neobuddy89
 #endif
 
 #if IS_ENABLED(CONFIG_LGE_DISPLAY_EXTENDED_PANEL)
@@ -1540,6 +1558,10 @@ static int mdss_dsi_event_handler(struct mdss_panel_data *pdata,
 		if (ctrl_pdata->on_cmds.link_state == DSI_HS_MODE)
 			rc = mdss_dsi_unblank(pdata);
 		pdata->panel_info.esd_rdy = true;
+#ifdef CONFIG_STATE_NOTIFIER
+		if (!use_fb_notifier)
+			state_resume();
+#endif
 		break;
 	case MDSS_EVENT_BLANK:
 #if IS_ENABLED(CONFIG_LGE_DISPLAY_POWER_SEQUENCE)
@@ -1557,9 +1579,57 @@ static int mdss_dsi_event_handler(struct mdss_panel_data *pdata,
 		if (ctrl_pdata->off_cmds.link_state == DSI_LP_MODE)
 			rc = mdss_dsi_blank(pdata, power_state);
 		rc = mdss_dsi_off(pdata, power_state);
+<<<<<<< HEAD
 #if IS_ENABLED(CONFIG_LGE_DISPLAY_POWER_SEQUENCE)
 		if (lge_mdss_dsi.lge_mdss_dsi_event_handler)
 			lge_mdss_dsi.lge_mdss_dsi_event_handler(pdata, event, arg);
+=======
+#ifdef CONFIG_STATE_NOTIFIER
+		if (!use_fb_notifier)
+			state_suspend();
+#endif
+#if defined(CONFIG_LGE_MIPI_P1_INCELL_QHD_CMD_PANEL)
+		if (ctrl_pdata->ndx) {
+			if (ctrl_pdata->panel_data.panel_info.panel_type
+					== LGD_INCELL_CMD_PANEL)
+				dw8768_lgd_dsv_setting(0);	/* LPWG mode */
+			if (ctrl_pdata->panel_data.panel_info.panel_type
+				!= LGD_SIC_INCELL_CMD_PANEL) {
+				if (ctrl_pdata->touch_driver_registered)
+					touch_notifier_call_chain(
+						LCD_EVENT_TOUCH_LPWG_ON, NULL);
+			}
+
+			if (ctrl_pdata->panel_data.panel_info.panel_type
+					== LGD_INCELL_CMD_PANEL) {
+				mdelay(20);
+				if (proxy_sensor_status == PROXY_NEAR) {
+					pr_info("%s: ACTIVE to DEEP\n",
+						       __func__);
+					lgd_deep_sleep(ctrl_pdata,
+						       LPWG_TO_DEEP_SLEEP,
+						      LPWG_TO_DEEP_SLEEP);
+				}
+				lgd_rsp_lcd_on_off = 0;
+			} else if (ctrl_pdata->panel_data.panel_info.panel_type
+				== JDI_INCELL_CMD_PANEL) {
+				msleep(50);
+				if (proxy_sensor_status == PROXY_NEAR) {
+					int param = 0;
+					pr_info("%s: ACTIVE to DEEP\n",
+						       __func__);
+					touch_notifier_call_chain(
+					LCD_EVENT_TOUCH_SLEEP_STATUS,
+						(void *)&param);
+					jdi_deep_sleep = 1;
+				}
+				lgd_rsp_lcd_on_off = 0;
+			}
+			else if (ctrl_pdata->panel_data.panel_info.panel_type
+				== LGD_SIC_INCELL_CMD_PANEL)
+				SIC_is_doze = 2;
+		}
+>>>>>>> 0ed388d... state_notifier: added new driver for on/off operations @neobuddy89
 #endif
 		break;
 	case MDSS_EVENT_CONT_SPLASH_FINISH:

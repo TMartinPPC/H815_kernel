@@ -97,8 +97,6 @@ source "fs/ntfs/Kconfig"
 endmenu
 endif # BLOCK
 
-source "fs/exfat/Kconfig"
-
 menu "Pseudo filesystems"
 
 source "fs/proc/Kconfig"
@@ -274,9 +272,5 @@ endif # NETWORK_FILESYSTEMS
 
 source "fs/nls/Kconfig"
 source "fs/dlm/Kconfig"
-
-config ASYNC_FSYNC
-	bool "asynchronous fsync"
-	default y
 
 endmenu

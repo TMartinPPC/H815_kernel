@@ -456,7 +456,7 @@ tcp_fastopen - INTEGER
 	connect() to perform a TCP handshake automatically.
 
 	The values (bitmap) are
-	1: Enables sending data in the opening SYN on the client w/ MSG_FASTOPEN.
+	1: Enables sending data in the opening SYN on the client.
 	2: Enables TCP Fast Open on the server side, i.e., allowing data in
 	   a SYN packet to be accepted and passed to the application before
 	   3-way hand shake finishes.
@@ -469,7 +469,7 @@ tcp_fastopen - INTEGER
 	   different ways of setting max_qlen without the TCP_FASTOPEN socket
 	   option.
 
-	Default: 1
+	Default: 0
 
 	Note that the client & server side Fast Open flags (1 and 2
 	respectively) must be also enabled before the rest of flags can take
@@ -597,6 +597,18 @@ tcp_challenge_ack_limit - INTEGER
 	in RFC 5961 (Improving TCP's Robustness to Blind In-Window Attacks)
 	Default: 100
 
+MPTCP variables:
+
+mptcp_enabled - INTEGER
+	Enable or disable Multipath TCP for new connections.
+	Possible values are:
+
+	0: Multipath TCP is disabled on all TCP-sockets that are newly created.
+	1: Multipath TCP is enabled by default on all new TCP-sockets. Note that
+	   existing sockets in LISTEN-state will still use regular TCP.
+	2: Enables Multipath TCP only upon the request of the application
+	   throught the socket-option MPTCP_ENABLED.
+
 UDP variables:
 
 udp_mem - vector of 3 INTEGERs: min, pressure, max
@@ -697,6 +709,11 @@ ip_local_reserved_ports - list of comma separated ranges
 	include the reserved ports.
 
 	Default: Empty
+
+reserved_port_bind - BOOLEAN
+	If set, allows explicit bind requests to applications requesting
+	any port within the range of ip_local_reserved_ports.
+	Default: 1
 
 ip_nonlocal_bind - BOOLEAN
 	If set, allows processes to bind() to non-local IP addresses,

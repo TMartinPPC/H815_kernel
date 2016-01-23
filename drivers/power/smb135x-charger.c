@@ -28,9 +28,6 @@
 #include <linux/regulator/of_regulator.h>
 #include <linux/regulator/machine.h>
 #include <linux/pinctrl/consumer.h>
-#ifdef CONFIG_FORCE_FAST_CHARGE
-#include <linux/fastcharge.h>
-#endif
 
 #ifdef CONFIG_LGE_PM_FACTORY_PSEUDO_BATTERY
 #include <soc/qcom/lge/board_lge.h>
@@ -434,6 +431,7 @@ struct smb135x_chg {
 	struct pinctrl			*smb_pinctrl;
 
 	bool				apsd_rerun;
+	bool				id_line_not_connected;
 };
 
 #define RETRY_COUNT 5
@@ -626,6 +624,9 @@ static bool is_usb_slave_present(struct smb135x_chg *chip)
 	bool usb_slave_present;
 	u8 reg;
 	int rc;
+
+	if (chip->id_line_not_connected)
+		return false;
 
 	rc = smb135x_read(chip, STATUS_6_REG, &reg);
 	if (rc < 0) {
@@ -1102,7 +1103,7 @@ static int smb135x_get_usb_chg_current(struct smb135x_chg *chip)
 	else
 		return chip->real_usb_psy_ma;
 }
-#define FCC_MASK			SMB135X_MASK(5, 0)
+#define FCC_MASK			SMB135X_MASK(4, 0)
 #define CFG_1C_REG			0x1C
 static int smb135x_get_fastchg_current(struct smb135x_chg *chip)
 {
@@ -1270,12 +1271,7 @@ static int smb135x_set_usb_chg_current(struct smb135x_chg *chip,
 #ifdef CONFIG_LGE_PM_PARALLEL_CHARGING
 #else
 	if (current_ma == CURRENT_500_MA) {
-#ifdef CONFIG_FORCE_FAST_CHARGE
-		if (force_fast_charge)
-			rc = smb135x_masked_write(chip, CFG_5_REG, USB_2_3_BIT, USB_2_3_BIT);
-		else
-#endif
-			rc = smb135x_masked_write(chip, CFG_5_REG, USB_2_3_BIT, 0);
+		rc = smb135x_masked_write(chip, CFG_5_REG, USB_2_3_BIT, 0);
 		rc |= smb135x_masked_write(chip, CMD_INPUT_LIMIT,
 				USB_100_500_AC_MASK, USB_500_VAL);
 		rc |= smb135x_path_suspend(chip, USB, CURRENT, false);
@@ -2226,12 +2222,7 @@ static void smb135x_external_power_changed(struct power_supply *psy)
 
 	if (chip->usb_psy_ma != current_limit) {
 		mutex_lock(&chip->current_change_lock);
-#ifdef CONFIG_FORCE_FAST_CHARGE
-		if (force_fast_charge)
-			chip->usb_psy_ma = 900;
-		else
-#endif
-			chip->usb_psy_ma = current_limit;
+		chip->usb_psy_ma = current_limit;
 		rc = smb135x_set_appropriate_current(chip, USB);
 		mutex_unlock(&chip->current_change_lock);
 		if (rc < 0)
@@ -3678,7 +3669,7 @@ static int determine_initial_status(struct smb135x_chg *chip)
 	}
 
 	chip->usb_slave_present = is_usb_slave_present(chip);
-	if (chip->usb_psy) {
+	if (chip->usb_psy && !chip->id_line_not_connected) {
 		pr_debug("setting usb psy usb_otg = %d\n",
 				chip->usb_slave_present);
 		power_supply_set_usb_otg(chip->usb_psy,
@@ -4216,6 +4207,8 @@ static int smb_parse_dt(struct smb135x_chg *chip)
 
 	chip->pinctrl_state_name = of_get_property(node, "pinctrl-names", NULL);
 
+	chip->id_line_not_connected = of_property_read_bool(node,
+						"qcom,id-line-not-connected");
 	return 0;
 }
 

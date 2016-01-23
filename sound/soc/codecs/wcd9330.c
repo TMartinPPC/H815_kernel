@@ -51,6 +51,7 @@ enum {
 	ADC4_TXFE,
 	ADC5_TXFE,
 	ADC6_TXFE,
+	HPH_DELAY,
 };
 
 #define TOMTOM_MAD_SLIMBUS_TX_PORT 12
@@ -61,7 +62,7 @@ enum {
 #define TOMTOM_BIT_ADJ_SHIFT_PORT1_6 4
 #define TOMTOM_BIT_ADJ_SHIFT_PORT7_10 5
 
-#define TOMTOM_HPH_PA_SETTLE_COMP_ON 5000
+#define TOMTOM_HPH_PA_SETTLE_COMP_ON 10000
 #define TOMTOM_HPH_PA_SETTLE_COMP_OFF 13000
 #define TOMTOM_HPH_PA_RAMP_DELAY 30000
 
@@ -3540,7 +3541,11 @@ static int tomtom_codec_enable_micbias(struct snd_soc_dapm_widget *w,
 		}
 		break;
 	case SND_SOC_DAPM_POST_PMU:
+#ifdef CONFIG_MACH_LGE
+		usleep_range(20000, 20100);
+#else
 		usleep_range(5000, 5100);
+#endif
 		/* Let MBHC module know so micbias is on */
 		wcd9xxx_resmgr_notifier_call(&tomtom->resmgr, e_post_on);
 		break;
@@ -4324,14 +4329,22 @@ static int tomtom_hph_pa_event(struct snd_soc_dapm_widget *w,
 
 	switch (event) {
 	case SND_SOC_DAPM_PRE_PMU:
+		set_bit(HPH_DELAY, &tomtom->status_mask);
 		/* Let MBHC module know PA is turning on */
 		wcd9xxx_resmgr_notifier_call(&tomtom->resmgr, e_pre_on);
 		break;
 
 	case SND_SOC_DAPM_POST_PMU:
-		usleep_range(pa_settle_time, pa_settle_time + 1000);
-		pr_debug("%s: sleep %d us after %s PA enable\n", __func__,
-				pa_settle_time, w->name);
+		if (test_bit(HPH_DELAY, &tomtom->status_mask)) {
+			/*
+			 * Make sure to wait 10ms after enabling HPHR_HPHL
+			 * in register 0x1AB
+			*/
+			usleep_range(pa_settle_time, pa_settle_time + 1000);
+			clear_bit(HPH_DELAY, &tomtom->status_mask);
+			pr_debug("%s: sleep %d us after %s PA enable\n",
+				__func__, pa_settle_time, w->name);
+		}
 		if (!high_perf_mode && !tomtom->uhqa_mode) {
 			wcd9xxx_clsh_fsm(codec, &tomtom->clsh_d,
 						 req_clsh_state,
@@ -4341,14 +4354,22 @@ static int tomtom_hph_pa_event(struct snd_soc_dapm_widget *w,
 		break;
 
 	case SND_SOC_DAPM_PRE_PMD:
-		wcd9xxx_resmgr_notifier_call(&tomtom->resmgr, e_pre_off);
+		set_bit(HPH_DELAY, &tomtom->status_mask);
 		break;
+
 	case SND_SOC_DAPM_POST_PMD:
 		/* Let MBHC module know PA turned off */
 		wcd9xxx_resmgr_notifier_call(&tomtom->resmgr, e_post_off);
-		usleep_range(pa_settle_time, pa_settle_time + 1000);
-		pr_debug("%s: sleep %d us after %s PA disable\n", __func__,
-				pa_settle_time, w->name);
+		if (test_bit(HPH_DELAY, &tomtom->status_mask)) {
+			/*
+			 * Make sure to wait 10ms after disabling HPHR_HPHL
+			 * in register 0x1AB
+			*/
+			usleep_range(pa_settle_time, pa_settle_time + 1000);
+			clear_bit(HPH_DELAY, &tomtom->status_mask);
+			pr_debug("%s: sleep %d us after %s PA disable\n",
+				__func__, pa_settle_time, w->name);
+		}
 
 		break;
 	}
@@ -5270,10 +5291,23 @@ static int tomtom_volatile(struct snd_soc_codec *ssc, unsigned int reg)
 	if (tomtom_is_digital_gain_register(reg))
 		return 1;
 
+	/* HPH status registers */
+	if (reg == TOMTOM_A_RX_HPH_L_STATUS || reg == TOMTOM_A_RX_HPH_R_STATUS)
+		return 1;
+
+	if (reg == TOMTOM_A_MBHC_INSERT_DET_STATUS)
+		return 1;
+
+	if (reg == TOMTOM_A_RX_HPH_CNP_EN)
+		return 1;
+
 	if (((reg >= TOMTOM_A_CDC_SPKR_CLIPDET_VAL0 &&
 	    reg <= TOMTOM_A_CDC_SPKR_CLIPDET_VAL7)) ||
 	    ((reg >= TOMTOM_A_CDC_SPKR2_CLIPDET_VAL0) &&
 	     (reg <= TOMTOM_A_CDC_SPKR2_CLIPDET_VAL7)))
+		return 1;
+
+	if (reg == TOMTOM_A_CDC_VBAT_GAIN_MON_VAL)
 		return 1;
 
 	for (i = 0; i < ARRAY_SIZE(audio_reg_cfg); i++)
@@ -5281,31 +5315,38 @@ static int tomtom_volatile(struct snd_soc_codec *ssc, unsigned int reg)
 		    TOMTOM_REGISTER_START_OFFSET == reg)
 			return 1;
 
-	switch (reg) {
-	case TOMTOM_A_RX_HPH_R_STATUS:
-	case TOMTOM_A_RX_HPH_L_STATUS:
-	case TOMTOM_A_MBHC_INSERT_DET_STATUS:
-	case TOMTOM_A_RX_HPH_CNP_EN:
-	case TOMTOM_A_CDC_VBAT_GAIN_MON_VAL:
-	case TOMTOM_A_SVASS_SPE_INBOX_TRG:
-	case TOMTOM_A_BIAS_OSC_BG_CTL:
-	case TOMTOM_A_CLK_BUFF_EN2:
+	if (reg == TOMTOM_A_SVASS_SPE_INBOX_TRG)
 		return 1;
-	}
 
 	return 0;
 }
 
-#ifdef CONFIG_SOUND_CONTROL_HAX_3_GPL
-extern int snd_hax_reg_access(unsigned int);
-extern unsigned int snd_hax_cache_read(unsigned int);
-extern void snd_hax_cache_write(unsigned int, unsigned int);
-#endif
+static int tomtom_write(struct snd_soc_codec *codec, unsigned int reg,
+	unsigned int value)
+{
+	int ret;
+	struct wcd9xxx *wcd9xxx = codec->control_data;
+	struct tomtom_priv *tomtom_p = snd_soc_codec_get_drvdata(codec);
 
-#ifndef CONFIG_SOUND_CONTROL_HAX_3_GPL 
-static
-#endif
-unsigned int tomtom_read(struct snd_soc_codec *codec,
+	if (reg == SND_SOC_NOPM)
+		return 0;
+
+	BUG_ON(reg > TOMTOM_MAX_REGISTER);
+
+	if (!tomtom_volatile(codec, reg)) {
+		ret = snd_soc_cache_write(codec, reg, value);
+		if (ret != 0)
+			dev_err(codec->dev, "Cache write to %x failed: %d\n",
+				reg, ret);
+	}
+
+	if (unlikely(test_bit(BUS_DOWN, &tomtom_p->status_mask))) {
+		dev_err(codec->dev, "write 0x%02x while offline\n", reg);
+		return -ENODEV;
+	} else
+		return wcd9xxx_reg_write(&wcd9xxx->core_res, reg, value);
+}
+static unsigned int tomtom_read(struct snd_soc_codec *codec,
 				unsigned int reg)
 {
 	unsigned int val;
@@ -5337,51 +5378,6 @@ unsigned int tomtom_read(struct snd_soc_codec *codec,
 		return val;
 	}
 }
-#ifdef CONFIG_SOUND_CONTROL_HAX_3_GPL
-EXPORT_SYMBOL(tomtom_read);
-#endif
-
-#ifndef CONFIG_SOUND_CONTROL_HAX_3_GPL
-static
-#endif
-int tomtom_write(struct snd_soc_codec *codec, unsigned int reg,
- unsigned int value)
-{
- int ret;
- struct wcd9xxx *wcd9xxx = codec->control_data;
-#ifdef CONFIG_SOUND_CONTROL_HAX_3_GPL
- unsigned int val;
-#endif
-
- if (reg == SND_SOC_NOPM)
- return 0;
-
- BUG_ON(reg > TOMTOM_MAX_REGISTER);
-
- if (!tomtom_volatile(codec, reg)) {
- ret = snd_soc_cache_write(codec, reg, value);
- if (ret != 0)
- dev_err(codec->dev, "Cache write to %x failed: %d\n",
- reg, ret);
- }
-#ifdef CONFIG_SOUND_CONTROL_HAX_3_GPL
-	if (!snd_hax_reg_access(reg)) {
-		if (!((val = snd_hax_cache_read(reg)) != -1)) {
-			val = wcd9xxx_reg_read_safe(&wcd9xxx->core_res, reg);
-		}
-	} else {
-		snd_hax_cache_write(reg, value);
-		val = value;
-	}
-	return wcd9xxx_reg_write(&wcd9xxx->core_res, reg, val);
-#else
-	return wcd9xxx_reg_write(&wcd9xxx->core_res, reg, value);
-#endif
-}
-#ifdef CONFIG_SOUND_CONTROL_HAX_3_GPL
-EXPORT_SYMBOL(tomtom_write);
-#endif
-
 
 static int tomtom_startup(struct snd_pcm_substream *substream,
 		struct snd_soc_dai *dai)
@@ -6704,7 +6700,7 @@ static const struct snd_soc_dapm_widget tomtom_dapm_widgets[] = {
 
 	SND_SOC_DAPM_PGA_E("HPHR", TOMTOM_A_RX_HPH_CNP_EN, 4, 0, NULL, 0,
 		tomtom_hph_pa_event, SND_SOC_DAPM_PRE_PMU |
-		SND_SOC_DAPM_POST_PMU |	SND_SOC_DAPM_PRE_PMD |
+		SND_SOC_DAPM_POST_PMU | SND_SOC_DAPM_PRE_PMD |
 		SND_SOC_DAPM_POST_PMD),
 
 	SND_SOC_DAPM_DAC_E("HPHR DAC", NULL, TOMTOM_A_RX_HPH_R_DAC_CTL, 7, 0,
@@ -8704,13 +8700,6 @@ static int tomtom_cpe_initialize(struct snd_soc_codec *codec)
 	return 0;
 }
 
-#ifdef CONFIG_SOUND_CONTROL_HAX_3_GPL
-struct snd_soc_codec *fauxsound_codec_ptr;
-EXPORT_SYMBOL(fauxsound_codec_ptr);
-int wcd9xxx_hw_revision;
-EXPORT_SYMBOL(wcd9xxx_hw_revision);
-#endif
-
 static int tomtom_codec_probe(struct snd_soc_codec *codec)
 {
 	struct wcd9xxx *control;
@@ -8722,11 +8711,6 @@ static int tomtom_codec_probe(struct snd_soc_codec *codec)
 	int i, rco_clk_rate;
 	void *ptr = NULL;
 	struct wcd9xxx_core_resource *core_res;
-
-#ifdef CONFIG_SOUND_CONTROL_HAX_3_GPL
-	pr_info("tomtom codec probe...\n");
-	fauxsound_codec_ptr = codec;
-#endif
 
 	codec->control_data = dev_get_drvdata(codec->dev->parent);
 	control = codec->control_data;

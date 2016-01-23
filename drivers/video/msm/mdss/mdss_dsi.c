@@ -32,10 +32,6 @@
 #include <soc/qcom/lge/board_lge.h>
 #define XO_CLK_RATE	19200000
 
-#ifdef CONFIG_STATE_NOTIFIER
-#include <linux/state_notifier.h>
-#endif
-
 #if IS_ENABLED(CONFIG_LGE_DISPLAY_POWER_SEQUENCE)
 #include "lge/panel/oem_mdss_dsi_common.h"
 struct lge_mdss_dsi_interface lge_mdss_dsi;
@@ -1544,10 +1540,6 @@ static int mdss_dsi_event_handler(struct mdss_panel_data *pdata,
 		if (ctrl_pdata->on_cmds.link_state == DSI_HS_MODE)
 			rc = mdss_dsi_unblank(pdata);
 		pdata->panel_info.esd_rdy = true;
-#ifdef CONFIG_STATE_NOTIFIER
-		if (!use_fb_notifier)
-			state_resume();
-#endif
 		break;
 	case MDSS_EVENT_BLANK:
 #if IS_ENABLED(CONFIG_LGE_DISPLAY_POWER_SEQUENCE)
@@ -1565,10 +1557,6 @@ static int mdss_dsi_event_handler(struct mdss_panel_data *pdata,
 		if (ctrl_pdata->off_cmds.link_state == DSI_LP_MODE)
 			rc = mdss_dsi_blank(pdata, power_state);
 		rc = mdss_dsi_off(pdata, power_state);
-#ifdef CONFIG_STATE_NOTIFIER
-		if (!use_fb_notifier)
-			state_suspend();
-#endif
 #if IS_ENABLED(CONFIG_LGE_DISPLAY_POWER_SEQUENCE)
 		if (lge_mdss_dsi.lge_mdss_dsi_event_handler)
 			lge_mdss_dsi.lge_mdss_dsi_event_handler(pdata, event, arg);
@@ -2292,6 +2280,24 @@ int dsi_panel_device_register(struct device_node *pan_node,
 	 * suspend also.
 	 */
 	if (pinfo->ulps_suspend_enabled) {
+#if defined(CONFIG_LGE_MIPI_P1_INCELL_QHD_CMD_PANEL)
+		if(pinfo->lge_pan_info.panel_type == LGD_INCELL_CMD_PANEL) {
+			/* Do nothing for P1 LGD when suspend-ulps is enabled.
+			But for MIPI spec, DSI power must be enabled to keep MIPI lanes low.
+			And this change is just an w/a code, which could cause other side effects ,
+			and just for decrease of current consumption */
+			pr_info("%s: just skip to enable vregs for DSI_CTRL_PM, ulps_suspend_enabled\n", __func__);
+		} else {
+			rc = msm_dss_enable_vreg(
+				ctrl_pdata->power_data[DSI_CTRL_PM].vreg_config,
+				ctrl_pdata->power_data[DSI_CTRL_PM].num_vreg, 1);
+			if (rc) {
+				pr_err("%s: failed to enable vregs for DSI_CTRL_PM\n",
+					__func__);
+				return rc;
+			}
+		}
+#else
 		rc = msm_dss_enable_vreg(
 			ctrl_pdata->power_data[DSI_CTRL_PM].vreg_config,
 			ctrl_pdata->power_data[DSI_CTRL_PM].num_vreg, 1);
@@ -2300,6 +2306,7 @@ int dsi_panel_device_register(struct device_node *pan_node,
 				__func__);
 			return rc;
 		}
+#endif
 	}
 
 	if (pinfo->cont_splash_enabled) {

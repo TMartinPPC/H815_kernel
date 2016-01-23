@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2015, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -23,6 +23,7 @@
 #include <linux/irq.h>
 #include <linux/list.h>
 #include <linux/mutex.h>
+#include <linux/rtmutex.h>
 #include <linux/spinlock.h>
 #include <linux/string.h>
 #include <linux/device.h>
@@ -501,8 +502,6 @@ struct msm_rpm_ack_msg {
 
 LIST_HEAD(msm_rpm_ack_list);
 
-static struct tasklet_struct data_tasklet;
-
 static DECLARE_COMPLETION(data_ready);
 
 static void msm_rpm_notify_sleep_chain(struct rpm_message_header *hdr,
@@ -699,7 +698,7 @@ static void msm_rpm_notify(void *data, unsigned event)
 
 	switch (event) {
 	case SMD_EVENT_DATA:
-		tasklet_schedule(&data_tasklet);
+		complete(&data_ready);
 		break;
 	case SMD_EVENT_OPEN:
 		complete(&pdata->smd_open);
@@ -889,22 +888,25 @@ static int msm_rpm_read_smd_data(char *buf)
 	return 0;
 }
 
-static void data_fn_tasklet(unsigned long data)
+static void msm_rpm_smd_work(struct work_struct *work)
 {
 	uint32_t msg_id;
 	int errno;
 	char buf[MAX_ERR_BUFFER_SIZE] = {0};
 
+	while (1) {
+		wait_for_completion(&data_ready);
 
-	spin_lock(&msm_rpm_data.smd_lock_read);
-	while (smd_is_pkt_avail(msm_rpm_data.ch_info)) {
-		if (msm_rpm_read_smd_data(buf))
-			break;
-		msg_id = msm_rpm_get_msg_id_from_ack(buf);
-		errno = msm_rpm_get_error_from_ack(buf);
-		msm_rpm_process_ack(msg_id, errno);
+		spin_lock(&msm_rpm_data.smd_lock_read);
+		while (smd_is_pkt_avail(msm_rpm_data.ch_info)) {
+			if (msm_rpm_read_smd_data(buf))
+				break;
+			msg_id = msm_rpm_get_msg_id_from_ack(buf);
+			errno = msm_rpm_get_error_from_ack(buf);
+			msm_rpm_process_ack(msg_id, errno);
+		}
+		spin_unlock(&msm_rpm_data.smd_lock_read);
 	}
-	spin_unlock(&msm_rpm_data.smd_lock_read);
 }
 
 static void msm_rpm_log_request(struct msm_rpm_request *cdata)
@@ -1201,6 +1203,7 @@ EXPORT_SYMBOL(msm_rpm_send_request_noirq);
 
 int msm_rpm_wait_for_ack(uint32_t msg_id)
 {
+	static DEFINE_RT_MUTEX(msm_rpm_smd_lock);
 	struct msm_rpm_wait_data *elem;
 	int rc = 0;
 
@@ -1219,7 +1222,9 @@ int msm_rpm_wait_for_ack(uint32_t msg_id)
 	if (!elem)
 		return rc;
 
+	rt_mutex_lock(&msm_rpm_smd_lock);
 	wait_for_completion(&elem->ack);
+	rt_mutex_unlock(&msm_rpm_smd_lock);
 	trace_rpm_ack_recd(0, msg_id);
 
 	rc = elem->errno;
@@ -1283,7 +1288,7 @@ wait_ack_cleanup:
 	spin_unlock_irqrestore(&msm_rpm_data.smd_lock_read, flags);
 
 	if (smd_is_pkt_avail(msm_rpm_data.ch_info))
-		tasklet_schedule(&data_tasklet);
+		complete(&data_ready);
 	return rc;
 }
 EXPORT_SYMBOL(msm_rpm_wait_for_ack_noirq);
@@ -1423,8 +1428,7 @@ static int msm_rpm_dev_probe(struct platform_device *pdev)
 
 	spin_lock_init(&msm_rpm_data.smd_lock_write);
 	spin_lock_init(&msm_rpm_data.smd_lock_read);
-	tasklet_init(&data_tasklet, data_fn_tasklet, 0);
-
+	INIT_WORK(&msm_rpm_data.work, msm_rpm_smd_work);
 
 	wait_for_completion(&msm_rpm_data.smd_open);
 

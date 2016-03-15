@@ -121,6 +121,8 @@ enum power_supply_property {
 	POWER_SUPPLY_PROP_CHARGE_FULL,
 	POWER_SUPPLY_PROP_CHARGE_EMPTY,
 	POWER_SUPPLY_PROP_CHARGE_NOW,
+	POWER_SUPPLY_PROP_CHARGE_NOW_RAW,
+	POWER_SUPPLY_PROP_CHARGE_NOW_ERROR,
 	POWER_SUPPLY_PROP_CHARGE_AVG,
 	POWER_SUPPLY_PROP_CHARGE_COUNTER,
 	POWER_SUPPLY_PROP_CHARGE_COUNTER_SHADOW,
@@ -142,6 +144,7 @@ enum power_supply_property {
 	POWER_SUPPLY_PROP_CAPACITY_ALERT_MIN, /* in percents! */
 	POWER_SUPPLY_PROP_CAPACITY_ALERT_MAX, /* in percents! */
 	POWER_SUPPLY_PROP_CAPACITY_LEVEL,
+	POWER_SUPPLY_PROP_CAPACITY_RAW,
 	POWER_SUPPLY_PROP_TEMP,
 	POWER_SUPPLY_PROP_TEMP_ALERT_MIN,
 	POWER_SUPPLY_PROP_TEMP_ALERT_MAX,
@@ -170,9 +173,23 @@ enum power_supply_property {
 #ifdef CONFIG_LGE_PM_FACTORY_PSEUDO_BATTERY
 	POWER_SUPPLY_PROP_PSEUDO_BATT,
 #endif
+#ifdef CONFIG_LGE_PM_MAXIM_EVP_CONTROL
+	POWER_SUPPLY_PROP_ENABLE_EVP_CHG,
+#endif
+#ifdef CONFIG_LGE_PM_QC20_SCENARIO
+	POWER_SUPPLY_PROP_ENABLE_QC20_CHG,
+#endif
+#ifdef CONFIG_LGE_USB_MAXIM_EVP
+	POWER_SUPPLY_PROP_EVP_VOL,
+	POWER_SUPPLY_PROP_HVDCP_TYPE,
+	POWER_SUPPLY_PROP_EVP_DETECT_START,
+#endif
 	POWER_SUPPLY_PROP_UPDATE_NOW,
 	POWER_SUPPLY_PROP_ESR_COUNT,
 	POWER_SUPPLY_PROP_SAFETY_TIMER_ENABLE,
+	POWER_SUPPLY_PROP_CHARGE_DONE,
+	POWER_SUPPLY_PROP_FLASH_ACTIVE,
+	POWER_SUPPLY_PROP_ALLOW_DETECTION,
 	/* Local extensions of type int64_t */
 	POWER_SUPPLY_PROP_CHARGE_COUNTER_EXT,
 	/* Properties of type `const char *' */
@@ -189,11 +206,12 @@ enum power_supply_property {
 #ifdef CONFIG_LGE_PM_LLK_MODE
 	POWER_SUPPLY_PROP_STORE_DEMO_ENABLED,
 #endif
-#ifdef CONFIG_LGE_PM_UNIFIED_WLC
-	POWER_SUPPLY_PROP_WIRELESS_CHARGER_SWITCH,
-#endif
 #ifdef CONFIG_LGE_PM_UNIFIED_WLC_ALIGNMENT
 	POWER_SUPPLY_PROP_ALIGNMENT,
+#endif
+#ifdef CONFIG_BATTERY_MAX17050
+	POWER_SUPPLY_PROP_BATTERY_CONDITION,
+	POWER_SUPPLY_PROP_BATTERY_AGE,
 #endif
 	POWER_SUPPLY_PROP_MODEL_NAME,
 	POWER_SUPPLY_PROP_MANUFACTURER,
@@ -207,7 +225,7 @@ enum power_supply_event_type{
 	POWER_SUPPLY_PROP_WIRELESS_CHARGE_COMPLETED,
 	POWER_SUPPLY_PROP_WIRELESS_ONLINE,
 #endif
-#ifdef CONFIG_DWC3_MSM_BC_12_VZW_SUPPORT
+#ifdef CONFIG_LGE_PM_VZW_REQ
 	POWER_SUPPLY_PROP_FLOATED_CHARGER,
 #endif
 };
@@ -225,7 +243,7 @@ enum power_supply_type {
 	POWER_SUPPLY_TYPE_WIRELESS,	/* Accessory Charger Adapters */
 	POWER_SUPPLY_TYPE_BMS,		/* Battery Monitor System */
 	POWER_SUPPLY_TYPE_USB_PARALLEL,		/* USB Parallel Path */
-#ifdef CONFIG_BATTERY_MAX17048
+#if defined(CONFIG_BATTERY_MAX17048) || defined(CONFIG_BATTERY_MAX17050)
 	POWER_SUPPLY_TYPE_FUELGAUGE,
 #endif
 	POWER_SUPPLY_TYPE_WIPOWER,		/* Wipower */
@@ -296,7 +314,7 @@ struct power_supply {
 	struct led_trigger *charging_blink_full_solid_trig;
 	char *charging_blink_full_solid_trig_name;
 #endif
-#ifdef CONFIG_DWC3_MSM_BC_12_VZW_SUPPORT
+#ifdef CONFIG_LGE_PM_VZW_REQ
 	int is_floated_charger;
 #endif
 };
@@ -321,7 +339,7 @@ struct power_supply_info {
 };
 
 #if defined(CONFIG_POWER_SUPPLY)
-#ifdef CONFIG_DWC3_MSM_BC_12_VZW_SUPPORT
+#ifdef CONFIG_LGE_PM_VZW_REQ
 int power_supply_set_floated_charger(struct power_supply *psy, int is_float);
 #endif
 extern struct power_supply *power_supply_get_by_name(const char *name);
@@ -340,6 +358,8 @@ extern int power_supply_set_supply_type(struct power_supply *psy,
 					enum power_supply_type supply_type);
 extern int power_supply_set_hi_power_state(struct power_supply *psy, int value);
 extern int power_supply_set_low_power_state(struct power_supply *psy,
+							int value);
+extern int power_supply_set_allow_detection(struct power_supply *psy,
 							int value);
 extern int power_supply_is_system_supplied(void);
 extern int power_supply_register(struct device *parent,
@@ -384,6 +404,9 @@ static inline int power_supply_set_hi_power_state(struct power_supply *psy,
 							int value)
 							{ return -ENOSYS; }
 static inline int power_supply_set_low_power_state(struct power_supply *psy,
+							int value)
+							{ return -ENOSYS; }
+static inline int power_supply_set_allow_detection(struct power_supply *psy,
 							int value)
 							{ return -ENOSYS; }
 static inline int power_supply_is_system_supplied(void) { return -ENOSYS; }

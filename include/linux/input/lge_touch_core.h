@@ -19,6 +19,7 @@
 #define LGE_TOUCH_CORE_H
 #include <linux/wakelock.h>
 #include <linux/interrupt.h>
+#include <linux/input/lge_touch_notify.h>
 
 #define MAX_FINGER	10
 #define MAX_BUTTON	4
@@ -144,6 +145,7 @@ struct touch_operation_role {
 	u32	wake_up_by_touch;
 	u32	use_sleep_mode; /* Yes = 1, No = 0 */
 	u32     use_lpwg_all;
+	u32     touch_solution;
 	u32     use_security_mode;
 	u32	use_lcd_notifier_callback;
 	u32     thermal_check;
@@ -194,7 +196,7 @@ struct touch_platform_data {
 	struct swp_caps			*swp_down_caps;
 	struct swp_caps			*swp_up_caps;
 	const char *inbuilt_fw_name;
-	const char *inbuilt_fw_name_list[4];
+	const char *inbuilt_fw_name_list[6];
 	const char *panel_spec;
 	const char *panel_spec_mfts_folder;
 	const char *panel_spec_mfts_flat;
@@ -433,6 +435,7 @@ struct lge_touch_data {
 	struct delayed_work		work_swipe;
 	struct delayed_work		work_trigger_handle;
 	struct delayed_work             work_thermal;
+	struct delayed_work             work_wc;
 	struct delayed_work             work_crack;
 	struct bouncing_filter_info	bouncing_filter;
 	struct grip_filter_info		grip_filter;
@@ -580,6 +583,7 @@ enum {
 	NOTIFY_TEMPERATURE_CHANGE,
 	NOTIFY_PROXIMITY,
 	NOTIFY_HALL_IC,
+	NOTIFY_WIRELESS_CHARGE,
 };
 
 enum {
@@ -811,7 +815,9 @@ do {								\
 
 
 extern int mfts_mode;
+extern int factory_boot;
 extern int boot_mode;
+extern int swipe_delta_check;
 extern struct pseudo_batt_info_type pseudo_batt_info;
 
 extern int is_sensing;

@@ -14,54 +14,13 @@
 #include <linux/power_supply.h>
 #endif
 
-#ifdef CONFIG_USB_G_LGE_ANDROID
+#ifdef CONFIG_LGE_USB_G_ANDROID
 #include <linux/platform_data/lge_android_usb.h>
 #endif
 
 #ifdef CONFIG_LGE_EARJACK_DEBUGGER
 #include <soc/qcom/lge/board_lge.h>
 #endif
-
-#ifdef CONFIG_LGE_LCD_TUNING
-#include "../drivers/video/msm/mdss/mdss_dsi.h"
-int tun_lcd[128];
-#endif
-
-#ifdef CONFIG_LGE_LCD_TUNING
-int lcd_set_values(int *tun_lcd_t)
-{
-	memset(tun_lcd,0,128*sizeof(int));
-	memcpy(tun_lcd,tun_lcd_t,128*sizeof(int));
-	printk("lcd_set_values ::: tun_lcd[0]=[%x], tun_lcd[1]=[%x], tun_lcd[2]=[%x] ......\n"
-		,tun_lcd[0],tun_lcd[1],tun_lcd[2]);
-	return 0;
-}
-static int lcd_get_values(int *tun_lcd_t)
-{
-	memset(tun_lcd_t,0,128*sizeof(int));
-	memcpy(tun_lcd_t,tun_lcd,128*sizeof(int));
-	printk("lcd_get_values\n");
-	return 0;
-}
-
-static struct lcd_platform_data lcd_pdata ={
-	.set_values = lcd_set_values,
-	.get_values = lcd_get_values,
-};
-static struct platform_device lcd_ctrl_device = {
-	.name = "lcd_ctrl",
-	.dev = {
-	.platform_data = &lcd_pdata,
-	}
-};
-
-static int __init lge_add_lcd_ctrl_devices(void)
-{
-	return platform_device_register(&lcd_ctrl_device);
-}
-arch_initcall(lge_add_lcd_ctrl_devices);
-#endif
-
 #ifdef CONFIG_LGE_PM_USB_ID
 struct chg_cable_info_table {
 	int threshhold;
@@ -86,6 +45,7 @@ static struct chg_cable_info_table lge_acc_cable_type_data[MAX_CABLE_NUM];
 static char dsv_vendor[3];
 int display_panel_type;
 int lk_panel_init_fail = 0;
+int rsp_nvm_rw;
 #if defined(CONFIG_MACH_MSM8992_P1_CN) || defined(CONFIG_MACH_MSM8992_P1_GLOBAL_COM)
 int lge_sim_type;
 #endif
@@ -362,6 +322,26 @@ int lge_get_panel(void)
 	return display_panel_type;
 }
 
+static int __init lge_rsp_nvm_setup(char *rsp_nvm)
+{
+	if (strncmp(rsp_nvm, "0", 1) == 0) {
+		rsp_nvm_rw = 0;
+	} else if (strncmp(rsp_nvm, "1", 1) == 0) {
+		rsp_nvm_rw = 1;
+	} else {
+		pr_err("%s : fail to read rsp_nvm \n", __func__);
+	}
+	pr_debug("rsp_nvm %d,\n", rsp_nvm_rw);
+
+	return 1;
+}
+__setup("lge.rsp_nvm=", lge_rsp_nvm_setup);
+
+int lge_get_rsp_nvm(void)
+{
+	return rsp_nvm_rw;
+}
+
 #if defined(CONFIG_MACH_MSM8992_P1_CN) || defined(CONFIG_MACH_MSM8992_P1_GLOBAL_COM)
 static int __init lge_sim_setup(char *sim_num)
 {
@@ -554,7 +534,7 @@ enum lge_laf_mode_type lge_get_laf_mode(void)
 	return lge_laf_mode;
 }
 
-#ifdef CONFIG_USB_G_LGE_ANDROID
+#ifdef CONFIG_LGE_USB_G_ANDROID
 int get_factory_cable(void)
 {
 	int res = 0;
@@ -609,7 +589,7 @@ static int __init lge_android_usb_devices_init(void)
 arch_initcall(lge_android_usb_devices_init);
 #endif
 
-#ifdef CONFIG_LGE_DIAG_USB_ACCESS_LOCK
+#ifdef CONFIG_LGE_USB_DIAG_LOCK
 static struct platform_device lg_diag_cmd_device = {
 	.name = "lg_diag_cmd",
 	.id = -1,
@@ -659,7 +639,7 @@ static int __init lge_check_bootreason(char *reason)
 
 	return 1;
 }
-__setup("lge.bootreasoncode=", lge_check_bootreason);
+__setup("lge.bootreason=", lge_check_bootreason);
 
 int lge_get_bootreason(void)
 {

@@ -1,1 +1,1 @@
-# H815_kernel
+# H815_kernel - AOSP/CAF Base

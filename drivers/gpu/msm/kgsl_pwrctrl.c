@@ -32,6 +32,7 @@
 #define KGSL_PWRFLAGS_CLK_ON   1
 #define KGSL_PWRFLAGS_AXI_ON   2
 #define KGSL_PWRFLAGS_IRQ_ON   3
+#define KGSL_PWRFLAGS_WAKEUP_PWRLEVEL  24
 
 #define UPDATE_BUSY_VAL		1000000
 
@@ -370,6 +371,14 @@ void kgsl_pwrctrl_pwrlevel_change(struct kgsl_device *device,
 	 */
 	new_level = _adjust_pwrlevel(pwr, new_level, &pwr->constraint,
 					device->pwrscale.popp_level);
+
+	/*
+	 * When waking up from SLUMBER at turbo then set the pwrlevel
+	 * to one level below turbo
+	 */
+	if (new_level == 0 && test_bit(KGSL_PWRFLAGS_WAKEUP_PWRLEVEL,
+		&device->pwrctrl.ctrl_flags))
+		new_level = 1;
 
 	/*
 	 * If thermal cycling is required and the new level hits the
@@ -1887,10 +1896,6 @@ static int _wake(struct kgsl_device *device)
 		mod_timer(&device->idle_timer, jiffies +
 				device->pwrctrl.interval_timeout);
 		break;
-	case KGSL_STATE_INIT:
-		kgsl_pwrctrl_set_state(device, KGSL_STATE_ACTIVE);
-		kgsl_pwrctrl_request_state(device, KGSL_STATE_NONE);
-		break;
 	default:
 		KGSL_PWR_WARN(device, "unhandled state %s\n",
 				kgsl_pwrstate_to_str(device->state));
@@ -1928,7 +1933,16 @@ _aware(struct kgsl_device *device)
 		del_timer_sync(&device->idle_timer);
 		break;
 	case KGSL_STATE_SLUMBER:
+		/*
+		 * Set this flag to avoid waking up at turbo
+		 * because wakeup at turbo is not stable
+		 * on some slow parts
+		 */
+		set_bit(KGSL_PWRFLAGS_WAKEUP_PWRLEVEL,
+				&device->pwrctrl.ctrl_flags);
 		status = kgsl_pwrctrl_enable(device);
+		clear_bit(KGSL_PWRFLAGS_WAKEUP_PWRLEVEL,
+				&device->pwrctrl.ctrl_flags);
 		break;
 	default:
 		status = -EINVAL;
@@ -2042,8 +2056,9 @@ _slumber(struct kgsl_device *device)
 		kgsl_pwrctrl_set_state(device, KGSL_STATE_SLUMBER);
 		break;
 	case KGSL_STATE_AWARE:
-		KGSL_PWR_WARN(device,
-			"transition AWARE -> SLUMBER is not permitted\n");
+		kgsl_pwrctrl_disable(device);
+		kgsl_pwrctrl_set_state(device, KGSL_STATE_SLUMBER);
+		break;
 	default:
 		kgsl_pwrctrl_request_state(device, KGSL_STATE_NONE);
 		break;
@@ -2062,7 +2077,8 @@ int _suspend(struct kgsl_device *device)
 {
 	int ret = 0;
 
-	if (KGSL_STATE_NONE == device->state)
+	if ((KGSL_STATE_NONE == device->state) ||
+			(KGSL_STATE_INIT == device->state))
 		return ret;
 
 	/* drain to prevent from more commands being submitted */
